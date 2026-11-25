@@ -7,8 +7,8 @@ campañas 2019/20 a 2025/26, con foco en la materia prima de la harina y la pani
 
 **Estado del proyecto:** en desarrollo. Hecho: preparación de datos, trigo candeal vs. total,
 superficie sembrada vs. cosechada (nivel provincial), tabla departamental de trigo total y
-candeal vs. total por departamento. Pendiente: tablero en Looker Studio y preguntas 1 y 5
-(ver sección 9). El mapa en QGIS queda pospuesto.
+candeal vs. total por departamento y tablas para el tablero. Pendiente: armado del tablero en
+Looker Studio y preguntas 1 y 5 (ver sección 9). El mapa en QGIS queda pospuesto.
 
 ---
 
@@ -172,6 +172,11 @@ todavía no se aplicó**, y no afecta a ningún resultado de trigo.
     (29) por `depto_id` y campaña, y se calculó el trigo pan derivado y el porcentaje de
     candeal. Controles: 1.785 filas, 2.222.136 t de candeal en total, 415 filas con candeal,
     100 departamentos con candeal y el candeal nunca mayor al total.
+13. **Tablas para el tablero.** Se generaron tres tablas por campaña (país, provincia y
+    departamento) con medidas sumables, en `3_tablero/`. Controles: 7, 96 y 1.785 filas;
+    269 departamentos; y los mismos totales en las tres (por ejemplo, 134.377.249 t de trigo
+    total). El top 5 de provincias en 2025/26 es Buenos Aires, Santa Fe, Córdoba, Entre Ríos y
+    Santiago del Estero, con el 93,4% de la producción.
 
 Todos los resultados se compararon contra valores calculados de forma independiente y
 coincidieron.
@@ -438,6 +443,49 @@ u otros motivos), por lo que no deben leerse como pérdidas confirmadas.
 - Los archivos provinciales se unen entre sí por `provincia` (y `campania` cuando corresponde)
   y con `dim_provincia.csv` por `provincia`.
 
+### 5.2 Tablas para el tablero (`3_tablero/`)
+
+Tres tablas generadas por `06_preparar_tablero.R` para cargar en Looker Studio. Todas son
+por campaña y tienen las mismas seis medidas **sumables**. No guardan porcentajes ni
+rendimientos: se definen como campos calculados en Looker Studio para que se recalculen bien
+al filtrar o agrupar (promediar porcentajes da resultados incorrectos).
+
+| Archivo | Una fila representa | Filas |
+|---|---|---:|
+| `tablero_nacional_campania.csv` | Una campaña (país) | 7 |
+| `tablero_provincial_campania.csv` | Una provincia y una campaña | 96 |
+| `tablero_departamental_campania.csv` | Un departamento y una campaña | 1.785 |
+
+| Campo | Tipo | Descripción | Presente en |
+|---|---|---|---|
+| `depto_id` | texto | Código INDEC de 5 dígitos, con ceros iniciales | Departamental |
+| `provincia` | texto | Nombre de la provincia | Provincial y departamental |
+| `departamento` | texto | Nombre del departamento | Departamental |
+| `campania` | texto | Campaña agrícola | Las tres |
+| `sup_sembrada_ha` | entero | Hectáreas sembradas de trigo total | Las tres |
+| `sup_cosechada_ha` | entero | Hectáreas cosechadas | Las tres |
+| `no_cosechada_ha` | entero | `sup_sembrada_ha` − `sup_cosechada_ha` | Las tres |
+| `total_tn` | entero | Producción de trigo total, en toneladas | Las tres |
+| `candeal_tn` | entero | Producción de trigo candeal, en toneladas (0 si no hay) | Las tres |
+| `pan_tn` | entero | Trigo pan derivado: `total_tn` − `candeal_tn` | Las tres |
+
+**Campos calculados en Looker Studio**
+
+| Campo | Fórmula |
+|---|---|
+| Rendimiento (kg/ha) | `SUM(total_tn) / SUM(sup_cosechada_ha) * 1000` |
+| % no cosechado | `SUM(no_cosechada_ha) / SUM(sup_sembrada_ha)` |
+| % candeal | `SUM(candeal_tn) / SUM(total_tn)` |
+
+**Controles:** las tres tablas suman lo mismo: 45.772.168 ha sembradas, 43.869.667 ha
+cosechadas (1.902.501 ha no cosechadas), 134.377.249 t de trigo total, 2.222.136 t de candeal y
+132.155.113 t de trigo pan. La tabla nacional es la suma de la provincial, y la provincial, la
+suma de la departamental.
+
+**Carga:** se suben como archivos CSV (UTF-8, encabezados con letras y guiones bajos). Los datos
+subidos a un mismo conjunto se agregan y no se reemplazan: si se regeneran los archivos, hay que
+crear un conjunto nuevo para no duplicar filas.
+
 ## 6. Resultados obtenidos
 
 ### 6.1 Serie nacional de trigo total
@@ -546,6 +594,8 @@ oscila entre 12,6 y 27,9 millones de toneladas, así que la variación viene pri
 - **"Localidad" se interpreta como departamento**, el nivel más fino del dataset.
 - **`NA` en lugar de división por cero.** En la tabla departamental, el rendimiento (6 filas)
   y el porcentaje no cosechado (3 filas) quedan como `NA` cuando la superficie es 0.
+- **Tablas del tablero con medidas sumables.** No incluyen porcentajes ni rendimientos; estos se
+  calculan en Looker Studio (sección 5.2) para que se recalculen bien al filtrar.
 - **Mapa en QGIS pospuesto.** Se decidió dejarlo fuera por ahora. La tabla departamental ya
   incluye `depto_id`, de modo que se podrá retomar sin rehacer datos.
 
@@ -566,12 +616,17 @@ proyecto_analisis-trigo/
 │   ├── trigo_sembrada_vs_cosechada_nacional.csv
 │   ├── trigo_sembrada_vs_cosechada_provincial.csv
 │   └── trigo_total_departamental.csv
+├── 3_tablero/              tablas para Looker Studio (sección 5.2)
+│   ├── tablero_departamental_campania.csv
+│   ├── tablero_nacional_campania.csv
+│   └── tablero_provincial_campania.csv
 ├── proceso/                código de R (se ejecuta en orden)
 │   ├── 01_dim_provincia.R
 │   ├── 02_candeal_vs_total.R
 │   ├── 03_sembrada_vs_cosechada.R
 │   ├── 04_trigo_departamental.R
-│   └── 05_candeal_departamental.R
+│   ├── 05_candeal_departamental.R
+│   └── 06_preparar_tablero.R
 └── readme.md
 ```
 
@@ -586,12 +641,14 @@ comprueba controles (por ejemplo, 20.712 filas) y se detiene si algo no coincide
 | `03_sembrada_vs_cosechada.R` | Superficie sembrada vs. cosechada de trigo total: acumulado, por campaña y nacional | `trigo_sembrada_vs_cosechada_provincial.csv`, `..._campania.csv`, `..._nacional.csv` |
 | `04_trigo_departamental.R` | Trigo total por departamento y campaña, con `depto_id` de 5 dígitos | `trigo_total_departamental.csv` |
 | `05_candeal_departamental.R` | Candeal, total y trigo pan por departamento y campaña, con el porcentaje de candeal | `trigo_candeal_vs_total_departamental.csv` |
+| `06_preparar_tablero.R` | Tablas por campaña con medidas sumables para Looker Studio (país, provincia y departamento) | `3_tablero/tablero_nacional_campania.csv`, `..._provincial_campania.csv`, `..._departamental_campania.csv` |
 
 Las rutas se definen en la variable `proyecto`, al principio de cada script.
 
 ## 9. Pendiente
 
-1. **Tablero en Looker Studio** con las tablas de la sección 5.
+1. **Armar el tablero en Looker Studio** con las tablas de `3_tablero/` (sección 5.2) y agregar
+   el enlace al README.
 2. **Pregunta 1** (uso del suelo) y **pregunta 5** (rendimiento frente a otros cultivos), con
    exclusión de subtotales y restauración de las tildes de los cultivos.
 3. **Pregunta 3 por departamento:** analizar `pct_no_cosechado` de la tabla departamental.
